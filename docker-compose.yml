@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  user-postgres:
+    image: postgres:16-alpine
+    container_name: user-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users_db
+    ports:
+      - "5432:5432"
+
+  event-postgres:
+    image: postgres:16-alpine
+    container_name: event-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: event_service_db
+    ports:
+      - "5433:5432"
+
+  payment-postgres:
+    image: postgres:15-alpine
+    container_name: payment-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payment_service_db
+    ports:
+      - "5434:5432"
+
+  booking-postgres:
+    image: postgres:16-alpine
+    container_name: booking-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: booking_service_db
+    ports:
+      - "5435:5432"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  user-service:
+    build:
+      context: ./user_service
+    container_name: user-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@user-postgres:5432/users_db
+      JWT_SECRET: your_jwt_secret_key_here
+      GOOGLE_CLIENT_ID: your_google_client_id
+    ports:
+      - "5000:5000"
+    depends_on:
+      - user-postgres
+
+  event-service:
+    build:
+      context: ./event_service
+    container_name: event-service
+    environment:
+      PORT: 5002
+      DB_USER: postgres
+      DB_HOST: event-postgres
+      DB_NAME: event_service_db
+      DB_PASSWORD: postgres
+      DB_PORT: 5432
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "5002:5002"
+    depends_on:
+      - event-postgres
+      - rabbitmq
+
+  payment-service:
+    build:
+      context: ./payment_service
+    container_name: payment-service
+    environment:
+      PORT: 5003
+      NODE_ENV: development
+      DB_HOST: payment-postgres
+      DB_PORT: 5432
+      DB_NAME: payment_service_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      JWT_SECRET: your_jwt_secret_key_here
+    ports:
+      - "5003:5003"
+    depends_on:
+      - payment-postgres
+      - rabbitmq
+
+  booking-service:
+    build:
+      context: ./booking_service
+    container_name: booking-service
+    environment:
+      PORT: 5001
+      DB_HOST: booking-postgres
+      DB_PORT: 5432
+      DB_NAME: booking_service_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_SSL: "false"
+      EVENT_SERVICE_BASE_URL: http://event-service:5002/api
+      USER_SERVICE_BASE_URL: http://user-service:5000/api
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      PAYMENT_RESULT_QUEUE_NAME: payment-result-queue
+      BOOKING_EXPIRY_MINUTES: 10
+    ports:
+      - "5001:5001"
+    depends_on:
+      - booking-postgres
+      - event-service
+      - user-service
+      - rabbitmq
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_BACKEND_API_URL: http://localhost:5000/api
+        NEXT_PUBLIC_PAYMENT_API_URL: http://localhost:5003/api
+    container_name: frontend
+    environment:
+      GOOGLE_CLIENT_ID: your_google_client_id
+      GOOGLE_CLIENT_SECRET: your_google_client_secret
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: any_random_secret_string
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_BACKEND_API_URL: /api
+      INTERNAL_BACKEND_API_URL: http://user-service:5000/api
+      NEXT_PUBLIC_PAYMENT_API_URL: /api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - user-service
+      - payment-service

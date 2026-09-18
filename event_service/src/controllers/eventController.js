@@ -10,15 +10,16 @@ exports.createEvent = async (req, res) => {
       event_date,
       event_time,
       organizer_name,
-      status
+      status,
+      image_url
     } = req.body;
 
     const result = await pool.query(
       `INSERT INTO events 
-      (title, description, category, venue, event_date, event_time, organizer_name, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      (title, description, category, venue, event_date, event_time, organizer_name, status, image_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *`,
-      [title, description, category, venue, event_date, event_time, organizer_name, status || "ACTIVE"]
+      [title, description, category, venue, event_date, event_time, organizer_name, status || "ACTIVE", image_url]
     );
 
     await publishEvent("event.created", { eventId: result.rows[0].id, title });
@@ -77,7 +78,8 @@ exports.updateEvent = async (req, res) => {
       event_date,
       event_time,
       organizer_name,
-      status
+      status,
+      image_url
     } = req.body;
 
     const result = await pool.query(
@@ -89,10 +91,11 @@ exports.updateEvent = async (req, res) => {
            event_date = $5,
            event_time = $6,
            organizer_name = $7,
-           status = $8
-       WHERE id = $9
+           status = $8,
+           image_url = $9
+       WHERE id = $10
        RETURNING *`,
-      [title, description, category, venue, event_date, event_time, organizer_name, status, id]
+      [title, description, category, venue, event_date, event_time, organizer_name, status, image_url, id]
     );
 
     if (result.rows.length === 0) {

@@ -17,6 +17,7 @@ const toIdString = (value: unknown): string => {
 // IMPORTANT: don't throw at module-evaluation time (breaks `next build` inside Docker).
 const getBackendApiBaseUrl = (): string => {
   const base =
+    process.env.INTERNAL_BACKEND_API_URL ||
     process.env.NEXT_PUBLIC_BACKEND_API_URL ||
     (process.env.NEXTAUTH_URL ? `${process.env.NEXTAUTH_URL}/api` : "");
   return base;
