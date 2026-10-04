@@ -3,12 +3,14 @@ const config = require('./env');
 
 let connection = null;
 let channel = null;
+let closing = false;
 
 /**
  * Connect to RabbitMQ with automatic reconnection
  */
 const connectRabbitMQ = async () => {
   try {
+    closing = false;
     connection = await amqplib.connect(config.rabbitmq.url);
     channel = await connection.createChannel();
 
@@ -39,8 +41,12 @@ const connectRabbitMQ = async () => {
 
     // Handle connection close - reconnect
     connection.on('close', () => {
-      console.error('❌ RabbitMQ connection closed. Reconnecting...');
-      setTimeout(connectRabbitMQ, 5000);
+      channel = null;
+      connection = null;
+      if (!closing) {
+        console.error('❌ RabbitMQ connection closed. Reconnecting...');
+        setTimeout(connectRabbitMQ, 5000);
+      }
     });
 
     connection.on('error', (err) => {
@@ -71,8 +77,11 @@ const getChannel = () => {
  */
 const closeRabbitMQ = async () => {
   try {
+    closing = true;
     if (channel) await channel.close();
     if (connection) await connection.close();
+    channel = null;
+    connection = null;
     console.log('✅ RabbitMQ connection closed gracefully');
   } catch (error) {
     console.error('❌ Error closing RabbitMQ:', error.message);

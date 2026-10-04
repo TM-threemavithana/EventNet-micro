@@ -76,47 +76,64 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // ─── Message Queue Consumer Handler ─────────────────────────────
-const handlePaymentRequest = async (message) => {
-  try {
-    const data = message.data || message;
-    console.log(`📥 Processing payment request from MQ:`, data);
+const handlePaymentRequest = async (message, messageMetadata = {}) => {
+  const data = message.data || message;
+  const requestKey = messageMetadata.messageId
+    ? `message:${messageMetadata.messageId}`
+    : `booking:${data.bookingId}`;
 
-    // Create payment from MQ message
-    const payment = await Payment.create({
+  console.log(`📥 Processing payment request from MQ:`, data);
+
+  // RabbitMQ provides at-least-once delivery, so persist a stable request key.
+  // Booking Service currently omits an AMQP message ID; bookingId is its stable fallback.
+  const [payment, created] = await Payment.findOrCreate({
+    where: { requestKey },
+    defaults: {
       bookingId: data.bookingId,
       userId: data.userId,
+      requestKey,
       amount: data.amount,
       currency: data.currency || 'USD',
       paymentMethod: data.paymentMethod || 'credit_card',
       cardLast4: data.cardLast4 || null,
       status: 'processing',
       metadata: data.metadata || {},
-    });
+    },
+  });
 
-    // Process through payment gateway
-    const result = await PaymentProcessor.processPayment({
-      amount: payment.amount,
-      currency: payment.currency,
-      paymentMethod: payment.paymentMethod,
-      cardLast4: payment.cardLast4,
-    });
-
-    if (result.success) {
-      await payment.update({
-        status: 'completed',
-        transactionId: result.transactionId,
-      });
+  if (!created) {
+    console.log(`♻️ Duplicate payment request ${requestKey}; reusing payment ${payment.id}`);
+    if (payment.status === 'completed') {
       await MessageQueueService.publishPaymentCompleted(payment);
-    } else {
-      await payment.update({
-        status: 'failed',
-        failureReason: result.error,
-      });
-      await MessageQueueService.publishPaymentFailed(payment, result.error);
+    } else if (payment.status === 'failed') {
+      await MessageQueueService.publishPaymentFailed(payment, payment.failureReason);
     }
-  } catch (error) {
-    console.error('❌ MQ payment processing error:', error.message);
+    return payment;
   }
+
+  // Process through payment gateway
+  const result = await PaymentProcessor.processPayment({
+    amount: payment.amount,
+    currency: payment.currency,
+    paymentMethod: payment.paymentMethod,
+    cardLast4: payment.cardLast4,
+  });
+
+  if (result.success) {
+    await payment.update({
+      status: 'completed',
+      transactionId: result.transactionId,
+    });
+    await MessageQueueService.publishPaymentCompleted(payment);
+  } else {
+    await payment.update({
+      status: 'failed',
+      failureReason: result.error,
+    });
+    await MessageQueueService.publishPaymentFailed(payment, result.error);
+  }
+
+  return payment;
 };
 
 // ─── Start Server ───────────────────────────────────────────────
@@ -178,6 +195,10 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
+module.exports.startServer = startServer;
+module.exports.handlePaymentRequest = handlePaymentRequest;

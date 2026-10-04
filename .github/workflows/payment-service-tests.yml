@@ -1,0 +1,26 @@
+name: Payment Service Tests
+
+on:
+  push:
+    paths:
+      - 'payment_service/**'
+      - '.github/workflows/payment-service-tests.yml'
+  pull_request:
+    paths:
+      - 'payment_service/**'
+      - '.github/workflows/payment-service-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run payment integration tests
+        run: docker compose -f payment_service/docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from payment-tests
+      - name: Clean up test containers
+        if: always()
+        run: docker compose -f payment_service/docker-compose.test.yml down --volumes

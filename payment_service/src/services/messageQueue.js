@@ -100,7 +100,10 @@ class MessageQueueService {
               const content = JSON.parse(msg.content.toString());
               console.log(`📥 Received from [${queue}]:`, JSON.stringify(content).substring(0, 100));
 
-              await handler(content);
+              await handler(content, {
+                messageId: msg.properties.messageId,
+                redelivered: msg.fields.redelivered,
+              });
 
               // Acknowledge the message
               channel.ack(msg);
@@ -115,6 +118,7 @@ class MessageQueueService {
       );
     } catch (error) {
       console.error('❌ Failed to start consumer:', error.message);
+      throw error;
     }
   }
 }
