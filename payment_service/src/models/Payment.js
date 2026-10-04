@@ -21,6 +21,12 @@ const Payment = sequelize.define(
       field: 'user_id',
       comment: 'Reference to the user in User Service',
     },
+    requestKey: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'request_key',
+      comment: 'Stable idempotency key for queue-originated payment requests',
+    },
     amount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
@@ -82,6 +88,7 @@ const Payment = sequelize.define(
     indexes: [
       { fields: ['booking_id'] },
       { fields: ['user_id'] },
+      { fields: ['request_key'], unique: true },
       { fields: ['status'] },
       { fields: ['transaction_id'], unique: true },
       { fields: ['created_at'] },
